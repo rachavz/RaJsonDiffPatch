@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace JsonDiffPatch
+namespace RaJsonDiffPatch
 {
     /// <summary>
     /// Parts adapted from https://github.com/benjamine/jsondiffpatch/blob/42ce1b6ca30c4d7a19688a020fce021a756b43cc/src/filters/arrays.js

@@ -2,7 +2,7 @@
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace JsonDiffPatch
+namespace RaJsonDiffPatch
 {
     public class JsonPatcher : AbstractPatcher<JToken>
     {

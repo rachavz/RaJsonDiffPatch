@@ -2,18 +2,17 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace JsonDiffPatch
+namespace RaJsonDiffPatch
 {
-    public class ReplaceOperation : Operation
+    public class TestOperation : Operation
     {
         public JToken Value { get; private set; }
 
-        public ReplaceOperation()
+        public TestOperation()
         {
-
         }
 
-        public ReplaceOperation(JsonPointer path, JToken value) : base(path)
+        public TestOperation(JsonPointer path, JToken value) : base(path)
         {
             Value = value;
         }
@@ -22,7 +21,7 @@ namespace JsonDiffPatch
         {
             writer.WriteStartObject();
 
-            WriteOp(writer, "replace");
+            WriteOp(writer, "test");
             WritePath(writer, Path);
             WriteValue(writer, Value);
 

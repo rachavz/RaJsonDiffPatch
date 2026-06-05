@@ -1,5 +1,5 @@
 ﻿using System;
-using JsonDiffPatch;
+using RaJsonDiffPatch;
 using NUnit.Framework;
 
 namespace Tavis.JsonPatch.Tests

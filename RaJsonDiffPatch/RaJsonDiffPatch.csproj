@@ -9,7 +9,7 @@
     <PackageTags>JSON, Diff, Patch, RFC, 6902</PackageTags>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageVersion>2.0.0</PackageVersion>
-    <RootNamespace>JsonDiffPatch</RootNamespace>
+    <RootNamespace>RaJsonDiffPatch</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

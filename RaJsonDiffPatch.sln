@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26403.7
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JsonDiffPatch", "JsonDiffPatch\JsonDiffPatch.csproj", "{F28B8328-85BE-4048-AA16-0C069095FB1F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RaJsonDiffPatch", "RaJsonDiffPatch\RaJsonDiffPatch.csproj", "{F28B8328-85BE-4048-AA16-0C069095FB1F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JsonDiffPatch.Tests", "JsonDiffPatchTests\JsonDiffPatch.Tests.csproj", "{1FCBC3F6-73A3-4686-9A8B-A7709CF1C198}"
 EndProject

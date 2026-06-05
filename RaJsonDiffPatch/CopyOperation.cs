@@ -2,18 +2,18 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace JsonDiffPatch
+namespace RaJsonDiffPatch
 {
-    public class MoveOperation : Operation
+    public class CopyOperation : Operation
     {
         public JsonPointer FromPath { get; private set; }
 
-        public MoveOperation()
+        public CopyOperation()
         {
 
         }
 
-        public MoveOperation(JsonPointer path, JsonPointer fromPath) : base(path)
+        public CopyOperation(JsonPointer path, JsonPointer fromPath) : base(path)
         {
             FromPath = fromPath;
         }
@@ -22,7 +22,7 @@ namespace JsonDiffPatch
         {
             writer.WriteStartObject();
 
-            WriteOp(writer, "move");
+            WriteOp(writer, "copy");
             WritePath(writer, Path);
             WriteFromPath(writer, FromPath);
 

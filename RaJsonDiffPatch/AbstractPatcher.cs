@@ -1,4 +1,4 @@
-﻿namespace JsonDiffPatch
+﻿namespace RaJsonDiffPatch
 {
     public abstract class AbstractPatcher<TDoc> where TDoc : class 
     {

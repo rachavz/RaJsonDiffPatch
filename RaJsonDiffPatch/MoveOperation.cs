@@ -2,28 +2,29 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace JsonDiffPatch
+namespace RaJsonDiffPatch
 {
-    public class TestOperation : Operation
+    public class MoveOperation : Operation
     {
-        public JToken Value { get; private set; }
+        public JsonPointer FromPath { get; private set; }
 
-        public TestOperation()
+        public MoveOperation()
         {
+
         }
 
-        public TestOperation(JsonPointer path, JToken value) : base(path)
+        public MoveOperation(JsonPointer path, JsonPointer fromPath) : base(path)
         {
-            Value = value;
+            FromPath = fromPath;
         }
 
         public override void Write(JsonWriter writer)
         {
             writer.WriteStartObject();
 
-            WriteOp(writer, "test");
+            WriteOp(writer, "move");
             WritePath(writer, Path);
-            WriteValue(writer, Value);
+            WriteFromPath(writer, FromPath);
 
             writer.WriteEndObject();
         }
@@ -31,7 +32,7 @@ namespace JsonDiffPatch
         public override void Read(JObject jOperation)
         {
             Path = new JsonPointer(SplitPath((string)jOperation.GetValue("path")));
-            Value = jOperation.GetValue("value");
+            FromPath = new JsonPointer(SplitPath((string)jOperation.GetValue("from")));
         }
     }
 }
