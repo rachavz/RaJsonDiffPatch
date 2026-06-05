@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Samples\LoadTest1.json" />
+    <EmbeddedResource Include="Samples\scene1a.json" />
+    <EmbeddedResource Include="Samples\scene1b.json" />
+    <EmbeddedResource Include="Samples\scene2a.json" />
+    <EmbeddedResource Include="Samples\scene2b.json" />
+    <EmbeddedResource Include="Samples\scene3a.json" />
+    <EmbeddedResource Include="Samples\scene3b.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.5.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="3.10.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JsonDiffPatch\JsonDiffPatch.csproj" />
+  </ItemGroup>
+
+</Project>

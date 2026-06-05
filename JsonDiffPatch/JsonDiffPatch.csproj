@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Description>Library for diffing and RFC 6902 patching json.net json objects - forked from Tavis.JsonPatch, with an addition of json diff code by Ian Mercer, with additional partial array LCS diff by JC Dickinson</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Copyright />
+    <PackageProjectUrl>https://github.com/mcintyre321/JsonDiffPatch</PackageProjectUrl>
+    <PackageTags>JSON, Diff, Patch, RFC, 6902</PackageTags>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageVersion>2.0.0</PackageVersion>
+    <RootNamespace>JsonDiffPatch</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>
