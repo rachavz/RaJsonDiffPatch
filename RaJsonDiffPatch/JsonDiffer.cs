@@ -1,51 +1,102 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
 namespace RaJsonDiffPatch
 {
     /// <summary>
+    /// Compares two JSON tokens and generates a JSON Patch document describing the differences.
     /// Parts adapted from https://github.com/benjamine/jsondiffpatch/blob/42ce1b6ca30c4d7a19688a020fce021a756b43cc/src/filters/arrays.js
     /// </summary>
     public class JsonDiffer
     {
+        /// <summary>
+        /// Extends a JSON Pointer path by appending a key segment, encoding special characters.
+        /// </summary>
+        /// <param name="path">The current path.</param>
+        /// <param name="extension">The key to append.</param>
+        /// <returns>The extended path.</returns>
         internal static string Extend(string path, string extension)
         {
             // TODO: JSON property name needs escaping for path ??
             return path + "/" + EncodeKey(extension);
         }
 
+        /// <summary>
+        /// Encodes a JSON Pointer token by escaping <c>~</c> and <c>/</c> characters per RFC 6901.
+        /// </summary>
+        /// <param name="key">The key to encode.</param>
+        /// <returns>The encoded key.</returns>
         private static string EncodeKey(string key) => key.Replace("~", "~0").Replace("/", "~1");
 
+        /// <summary>
+        /// Builds an <see cref="Operation"/> from the specified op name, path, key, and value.
+        /// </summary>
+        /// <param name="op">The operation name.</param>
+        /// <param name="path">The base path.</param>
+        /// <param name="key">The key to extend the path with, or <c>null</c> to use the path as-is.</param>
+        /// <param name="value">The value for the operation, or <c>null</c> for operations without a value.</param>
+        /// <returns>The constructed <see cref="Operation"/>.</returns>
         private static Operation Build(string op, string path, string key, JToken value)
         {
-            if (string.IsNullOrEmpty(key))
-                return
-                    Operation.Parse("{ 'op' : '" + op + "' , path: '" + path + "', value: " +
-                                    (value == null ? "null" : value.ToString(Formatting.None)) + "}");
-            else
-                return
-                    Operation.Parse("{ op : '" + op + "' , path : '" + Extend(path, key) + "' , value : " +
-                                    (value == null ? "null" : value.ToString(Formatting.None)) + "}");
+            var pointer = new JsonPointer((string.IsNullOrEmpty(key) ? path : Extend(path, key))
+                                          .Split('/').Skip(1).ToArray());
+            switch (op)
+            {
+                case "add": return new AddOperation(pointer, value.DeepClone());
+                case "remove": return new RemoveOperation(pointer);
+                case "replace": return new ReplaceOperation(pointer, value.DeepClone());
+                default: throw new ArgumentException("Unknown operation: " + op, nameof(op));
+            }
         }
 
+        /// <summary>
+        /// Creates an "add" operation for the specified path and value.
+        /// </summary>
+        /// <param name="path">The base path.</param>
+        /// <param name="key">The key to extend the path with.</param>
+        /// <param name="value">The value to add.</param>
+        /// <returns>An <see cref="Operation"/> representing the add.</returns>
         internal static Operation Add(string path, string key, JToken value)
         {
             return Build("add", path, key, value);
         }
 
+        /// <summary>
+        /// Creates a "remove" operation for the specified path.
+        /// </summary>
+        /// <param name="path">The base path.</param>
+        /// <param name="key">The key to extend the path with.</param>
+        /// <returns>An <see cref="Operation"/> representing the remove.</returns>
         internal static Operation Remove(string path, string key)
         {
             return Build("remove", path, key, null);
         }
 
+        /// <summary>
+        /// Creates a "replace" operation for the specified path and value.
+        /// </summary>
+        /// <param name="path">The base path.</param>
+        /// <param name="key">The key to extend the path with.</param>
+        /// <param name="value">The replacement value.</param>
+        /// <returns>An <see cref="Operation"/> representing the replace.</returns>
         internal static Operation Replace(string path, string key, JToken value)
         {
             return Build("replace", path, key, value);
         }
 
+        /// <summary>
+        /// Recursively calculates the patch operations needed to transform <paramref name="left"/> into <paramref name="right"/>.
+        /// </summary>
+        /// <param name="left">The original JSON token.</param>
+        /// <param name="right">The target JSON token.</param>
+        /// <param name="useIdToDetermineEquality">
+        /// If <c>true</c>, uses the "id" property of objects within arrays to determine equality instead of deep comparison.
+        /// </param>
+        /// <param name="path">The current JSON Pointer path (used during recursion).</param>
+        /// <returns>An enumerable sequence of patch operations.</returns>
         internal static IEnumerable<Operation> CalculatePatch(JToken left, JToken right, bool useIdToDetermineEquality,
             string path = "")
         {
@@ -117,6 +168,16 @@ namespace RaJsonDiffPatch
             }
         }
 
+        /// <summary>
+        /// Processes two arrays to determine the set of patch operations needed to transform one into the other.
+        /// </summary>
+        /// <param name="left">The original array token.</param>
+        /// <param name="right">The target array token.</param>
+        /// <param name="path">The current JSON Pointer path.</param>
+        /// <param name="useIdPropertyToDetermineEquality">
+        /// If <c>true</c>, uses the "id" property to determine element equality.
+        /// </param>
+        /// <returns>An enumerable sequence of patch operations.</returns>
         private static IEnumerable<Operation> ProcessArray(JToken left, JToken right, string path,
             bool useIdPropertyToDetermineEquality)
         {
@@ -304,6 +365,9 @@ namespace RaJsonDiffPatch
             //}
         }
 
+        /// <summary>
+        /// Compares key-value pairs by key only, used for set difference operations on object properties.
+        /// </summary>
         private class MatchesKey : IEqualityComparer<KeyValuePair<string, JToken>>
         {
             public static MatchesKey Instance = new MatchesKey();
@@ -320,29 +384,45 @@ namespace RaJsonDiffPatch
         }
 
         /// <summary>
-        ///
+        /// Computes the diff between two JSON tokens and returns a <see cref="PatchDocument"/> describing the changes.
         /// </summary>
-        /// <param name="@from"></param>
-        /// <param name="to"></param>
-        /// <param name="useIdPropertyToDetermineEquality">Use id propety on array members to determine equality</param>
-        /// <returns></returns>
+        /// <param name="from">The original JSON token.</param>
+        /// <param name="to">The target JSON token.</param>
+        /// <param name="useIdPropertyToDetermineEquality">
+        /// If <c>true</c>, uses the "id" property on array members to determine equality.
+        /// </param>
+        /// <returns>A <see cref="PatchDocument"/> containing the operations to transform <paramref name="from"/> into <paramref name="to"/>.</returns>
         public PatchDocument Diff(JToken @from, JToken to, bool useIdPropertyToDetermineEquality)
         {
             return new PatchDocument(CalculatePatch(@from, to, useIdPropertyToDetermineEquality).ToArray());
         }
     }
 
+    /// <summary>
+    /// Compares <see cref="JToken"/> instances for equality, optionally using an "id" property check.
+    /// </summary>
     internal class CustomCheckEqualityComparer : IEqualityComparer<JToken>
     {
         private readonly bool _enableIdCheck;
         private readonly IEqualityComparer<JToken> _inner;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CustomCheckEqualityComparer"/> class.
+        /// </summary>
+        /// <param name="enableIdCheck">If <c>true</c>, compares objects by their "id" property when present.</param>
+        /// <param name="inner">The inner equality comparer to fall back to.</param>
         public CustomCheckEqualityComparer(bool enableIdCheck, IEqualityComparer<JToken> inner)
         {
             _enableIdCheck = enableIdCheck;
             _inner = inner;
         }
 
+        /// <summary>
+        /// Determines whether two <see cref="JToken"/> instances are equal, using the "id" property check if enabled.
+        /// </summary>
+        /// <param name="x">The first token.</param>
+        /// <param name="y">The second token.</param>
+        /// <returns><c>true</c> if the tokens are considered equal; otherwise <c>false</c>.</returns>
         public bool Equals(JToken x, JToken y)
         {
             if (_enableIdCheck && x.Type == JTokenType.Object && y.Type == JTokenType.Object)
@@ -361,6 +441,11 @@ namespace RaJsonDiffPatch
             return _inner.Equals(x, y);
         }
 
+        /// <summary>
+        /// Returns a hash code for the specified <see cref="JToken"/>.
+        /// </summary>
+        /// <param name="obj">The token to hash.</param>
+        /// <returns>A hash code for the token.</returns>
         public int GetHashCode(JToken obj)
         {
             if (_enableIdCheck && obj.Type == JTokenType.Object)
@@ -373,6 +458,12 @@ namespace RaJsonDiffPatch
             return _inner.GetHashCode(obj);
         }
 
+        /// <summary>
+        /// Determines whether two <see cref="JToken"/> objects have equal "id" properties.
+        /// </summary>
+        /// <param name="x">The first token.</param>
+        /// <param name="y">The second token.</param>
+        /// <returns><c>true</c> if both tokens are objects with matching non-null "id" values.</returns>
         public static bool HaveEqualIds(JToken x, JToken y)
         {
             if (x.Type == JTokenType.Object && y.Type == JTokenType.Object)

@@ -4,12 +4,15 @@ using Newtonsoft.Json.Linq;
 
 namespace RaJsonDiffPatch
 {
+    /// <summary>
+    /// Applies JSON Patch operations to <see cref="JToken"/> documents.
+    /// </summary>
     public class JsonPatcher : AbstractPatcher<JToken>
     {
 
+        /// <inheritdoc />
         protected override JToken Replace(ReplaceOperation operation, JToken target)
         {
-            operation.Path.ToString().Replace("~1", "/").Replace("~0", "~");
             var token = operation.Path.Find(target);
             if (token.Parent == null)
             {
@@ -22,6 +25,7 @@ namespace RaJsonDiffPatch
             }
         }
 
+        /// <inheritdoc />
         protected override void Add(AddOperation operation, JToken target)
         {
             JToken token = null;
@@ -75,6 +79,7 @@ namespace RaJsonDiffPatch
         }
 
 
+        /// <inheritdoc />
         protected override void Remove(RemoveOperation operation, JToken target)
         {
             var token = operation.Path.Find(target);
@@ -88,6 +93,7 @@ namespace RaJsonDiffPatch
             }
         }
 
+        /// <inheritdoc />
         protected override void Move(MoveOperation operation, JToken target)
         {
             if (operation.Path.ToString().StartsWith(operation.FromPath.ToString())) throw new ArgumentException("To path cannot be below from path");
@@ -97,6 +103,7 @@ namespace RaJsonDiffPatch
             Add(new AddOperation(operation.Path, token), target);
         }
 
+        /// <inheritdoc />
         protected override void Test(TestOperation operation, JToken target)
         {
             var existingValue = operation.Path.Find(target);
@@ -106,6 +113,7 @@ namespace RaJsonDiffPatch
             }
         }
 
+        /// <inheritdoc />
         protected override void Copy(CopyOperation operation, JToken target)
         {
             var token = operation.FromPath.Find(target);  // Do I need to clone this?
