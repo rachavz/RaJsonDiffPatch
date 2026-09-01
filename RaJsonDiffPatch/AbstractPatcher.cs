@@ -1,4 +1,6 @@
-﻿namespace RaJsonDiffPatch
+using System;
+
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Provides an abstract base class for applying JSON Patch operations to a document of type <typeparamref name="TDoc"/>.
@@ -16,6 +18,8 @@
         /// <param name="document">The patch document containing the operations to apply.</param>
         public virtual void Patch(ref TDoc target, PatchDocument document)
         {
+            if (document == null) throw new ArgumentNullException(nameof(document));
+
             foreach (var operation in document.Operations)
             {
                 target = ApplyOperation(operation, target);
@@ -28,8 +32,11 @@
         /// <param name="operation">The operation to apply.</param>
         /// <param name="target">The target document.</param>
         /// <returns>The original or a new root document after the operation is applied.</returns>
+        /// <exception cref="ArgumentException">The operation is not one of the six defined by RFC 6902.</exception>
         public virtual TDoc ApplyOperation(Operation operation, TDoc target)
         {
+            if (operation == null) throw new ArgumentNullException(nameof(operation));
+
             switch (operation)
             {
                 case AddOperation add:
@@ -50,6 +57,9 @@
                 case TestOperation test:
                     Test(test, target);
                     break;
+                default:
+                    throw new ArgumentException(
+                        "Unsupported operation type '" + operation.GetType().Name + "'.", nameof(operation));
             }
             return target;
         }

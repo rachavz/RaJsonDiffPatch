@@ -1,18 +1,20 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a JSON Patch document as defined by RFC 6902, containing an ordered list of operations.
     /// </summary>
     public class PatchDocument
     {
-        private readonly List<Operation> _Operations = new List<Operation>();
+        private readonly List<Operation> _operations = new List<Operation>();
+        private readonly ReadOnlyCollection<Operation> _readOnlyOperations;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PatchDocument"/> class with the specified operations.
@@ -20,7 +22,8 @@ namespace RaJsonDiffPatch
         /// <param name="operations">The operations to include in this patch document.</param>
         public PatchDocument(params Operation[] operations)
         {
-            _Operations.AddRange(operations);
+            if (operations != null) _operations.AddRange(operations);
+            _readOnlyOperations = _operations.AsReadOnly();
         }
 
         /// <summary>
@@ -28,7 +31,7 @@ namespace RaJsonDiffPatch
         /// </summary>
         public IReadOnlyCollection<Operation> Operations
         {
-            get { return _Operations; }
+            get { return _readOnlyOperations; }
         }
 
         /// <summary>
@@ -37,7 +40,8 @@ namespace RaJsonDiffPatch
         /// <param name="operation">The operation to add.</param>
         public void AddOperation(Operation operation)
         {
-            _Operations.Add(operation);
+            if (operation == null) throw new ArgumentNullException(nameof(operation));
+            _operations.Add(operation);
         }
 
         /// <summary>
@@ -47,9 +51,14 @@ namespace RaJsonDiffPatch
         /// <returns>The loaded <see cref="PatchDocument"/>.</returns>
         public static PatchDocument Load(Stream document)
         {
-            var reader = new StreamReader(document);
-       
-            return Parse(reader.ReadToEnd());
+            if (document == null) throw new ArgumentNullException(nameof(document));
+
+            // Leave the caller's stream open: it owns it, and callers pass shared streams
+            // such as Assembly.GetManifestResourceStream.
+            using (var reader = new StreamReader(document, Encoding.UTF8, true, 1024, true))
+            {
+                return Parse(reader.ReadToEnd());
+            }
         }
 
         /// <summary>
@@ -63,10 +72,15 @@ namespace RaJsonDiffPatch
 
             if (document != null)
             {
-                foreach (var jOperation in document.Children().Cast<JObject>())
+                for (int i = 0; i < document.Count; i++)
                 {
-                    var op = Operation.Build(jOperation);
-                    root.AddOperation(op);
+                    var jOperation = document[i] as JObject;
+                    if (jOperation == null)
+                        throw new ArgumentException(
+                            "Entry " + i + " of a JSON Patch document must be an object, but is a " +
+                            document[i].Type + ".", nameof(document));
+
+                    root.AddOperation(Operation.Build(jOperation));
                 }
             }
             
@@ -81,7 +95,10 @@ namespace RaJsonDiffPatch
         public static PatchDocument Parse(string jsondocument)
         {
             var root = JToken.Parse(jsondocument) as JArray;
-            
+            if (root == null)
+                throw new ArgumentException(
+                    "A JSON Patch document must be a JSON array of operations.", nameof(jsondocument));
+
             return Load(root);
         }
 
@@ -89,7 +106,8 @@ namespace RaJsonDiffPatch
         /// Creates an <see cref="Operation"/> instance based on the operation name.
         /// </summary>
         /// <param name="op">The operation name (e.g. "add", "remove", "replace", "move", "copy", "test").</param>
-        /// <returns>A new operation instance, or <c>null</c> if the operation name is not recognized.</returns>
+        /// <returns>A new operation instance.</returns>
+        /// <exception cref="ArgumentException">The operation name is not one of the six defined by RFC 6902.</exception>
         public static Operation CreateOperation(string op)
         {
             switch (op)
@@ -101,7 +119,12 @@ namespace RaJsonDiffPatch
                 case "replace": return new ReplaceOperation();
                 case "test" : return new TestOperation();
             }
-            return null;
+
+            throw new ArgumentException(
+                op == null
+                    ? "A JSON Patch operation requires an 'op' member."
+                    : "'" + op + "' is not a JSON Patch operation; expected add, copy, move, remove, replace or test.",
+                nameof(op));
         }
 
         /// <summary>
@@ -124,7 +147,9 @@ namespace RaJsonDiffPatch
         /// <param name="formatting">The JSON formatting to apply. Defaults to <see cref="Formatting.Indented"/>.</param>
         public void CopyToStream(Stream stream, Formatting formatting = Formatting.Indented)
         {
-            var sw = new JsonTextWriter(new StreamWriter(stream));
+            // Deliberately neither disposed nor closed: disposing the writer would close the
+            // caller's stream, and ToStream/ToString still need to read back from it.
+            var sw = new JsonTextWriter(new StreamWriter(stream, new UTF8Encoding(false), 1024, true));
             sw.Formatting = formatting;
 
             sw.WriteStartArray();

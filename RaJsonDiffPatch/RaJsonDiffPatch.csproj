@@ -1,16 +1,33 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Description>Library for diffing and RFC 6902 patching json.net json objects - forked from Tavis.JsonPatch, with an addition of json diff code by Ian Mercer, with additional partial array LCS diff by JC Dickinson</Description>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Copyright />
-    <PackageProjectUrl>https://github.com/mcintyre321/JsonDiffPatch</PackageProjectUrl>
-    <PackageTags>JSON, Diff, Patch, RFC, 6902</PackageTags>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageVersion>2.0.0</PackageVersion>
-    <RootNamespace>RaJsonDiffPatch</RootNamespace>
+    <AssemblyName>RaJsonDiffPatch</AssemblyName>
+    <RootNamespace>JsonDiffPatch</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>CS1591</NoWarn>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>RaJsonDiffPatch</PackageId>
+    <Version>26.9.2</Version>
+    <Authors>Raúl Chávez Vázquez</Authors>
+    <Description>JSON Patch (RFC 6902) and JSON Pointer (RFC 6901) for Json.NET documents, on any platform supporting .NET Standard 2.0+. Applies patch documents to JToken trees and generates them by diffing two documents, optionally matching array elements by their id property.</Description>
+    <Copyright>Copyright (c) 2026 - 2099 Raúl Chávez Vázquez</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>json;json-patch;json-pointer;diff;patch;rfc6902;rfc6901;jsonnet;netstandard</PackageTags>
+    <RepositoryUrl>https://github.com/rachavz/RaJsonDiffPatch</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/rachavz/RaJsonDiffPatch</PackageProjectUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\License.txt" Pack="true" PackagePath="" />
+    <None Include="..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

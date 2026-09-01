@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a JSON Patch "test" operation that checks that a value at the target path equals the specified value.
@@ -46,8 +46,8 @@ namespace RaJsonDiffPatch
         /// <inheritdoc />
         public override void Read(JObject jOperation)
         {
-            Path = new JsonPointer(SplitPath((string)jOperation.GetValue("path")));
-            Value = jOperation.GetValue("value");
+            Path = ReadPointer(jOperation, "path");
+            Value = ReadValue(jOperation);
         }
     }
 }

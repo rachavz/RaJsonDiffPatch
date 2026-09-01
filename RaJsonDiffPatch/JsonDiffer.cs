@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Compares two JSON tokens and generates a JSON Patch document describing the differences.
@@ -20,7 +21,6 @@ namespace RaJsonDiffPatch
         /// <returns>The extended path.</returns>
         internal static string Extend(string path, string extension)
         {
-            // TODO: JSON property name needs escaping for path ??
             return path + "/" + EncodeKey(extension);
         }
 
@@ -29,7 +29,7 @@ namespace RaJsonDiffPatch
         /// </summary>
         /// <param name="key">The key to encode.</param>
         /// <returns>The encoded key.</returns>
-        private static string EncodeKey(string key) => key.Replace("~", "~0").Replace("/", "~1");
+        private static string EncodeKey(string key) => JsonPointer.Encode(key);
 
         /// <summary>
         /// Builds an <see cref="Operation"/> from the specified op name, path, key, and value.
@@ -41,8 +41,7 @@ namespace RaJsonDiffPatch
         /// <returns>The constructed <see cref="Operation"/>.</returns>
         private static Operation Build(string op, string path, string key, JToken value)
         {
-            var pointer = new JsonPointer((string.IsNullOrEmpty(key) ? path : Extend(path, key))
-                                          .Split('/').Skip(1).ToArray());
+            var pointer = new JsonPointer(string.IsNullOrEmpty(key) ? path : Extend(path, key));
             switch (op)
             {
                 case "add": return new AddOperation(pointer, value.DeepClone());
@@ -255,114 +254,6 @@ namespace RaJsonDiffPatch
                 yield return new AddOperation(new JsonPointer($"{path}/{commonHead + i}"), rightMiddle[i]);
             }
 
-            //if (commonHead + commonTail == len1)
-            //{
-            //    if (len1 == len2)
-            //    {
-            //        // arrays are identical
-            //        yield break;
-            //    }
-            //    // trivial case, a block (1 or more consecutive items) was added
-
-            //    for (index = commonHead; index < len2 - commonTail; index++)
-            //    {
-            //        yield return new AddOperation()
-            //        {
-            //            Value = array2[index],
-            //            Path = new JsonPointer(path + "/" + index)
-            //        };
-            //    }
-            //}
-            //if (commonHead + commonTail == len2)
-            //{
-            //    // trivial case, a block (1 or more consecutive items) was removed
-            //    for (index = commonHead; index < len1 - commonTail; index++)
-            //    {
-            //        yield return new RemoveOperation()
-            //        {
-            //            Path = new JsonPointer(path + "/" + index)
-            //        };
-            //    }
-            //}
-
-            //var context = new Dictionary<string, object>();
-
-            //var lcs = new ArrayLcs((a, b) => comparer.Equals((JToken)a, (JToken)b));
-            //var trimmed1 = array1.Skip(commonHead).Take(len1 - commonTail).ToArray();
-            //var trimmed2 = array2.Skip(commonHead).Take(len2 - commonTail).ToArray();
-            //var seq = lcs.Get(trimmed1, trimmed2, context);
-            //for (index = commonHead; index < len1 - commonTail; index++)
-            //{
-            //    if ((seq.indices1).IndexOf(index - commonHead) < 0)
-            //    {
-            //        // removed
-            //        yield return new RemoveOperation()
-            //        {
-            //            Path = new JsonPointer(path + "/" + commonHead)
-            //        };
-            //        //removedItems.push(index);
-            //    }
-            //}
-
-            //var detectMove = true;
-            //if (context.options && context.options.arrays && context.options.arrays.detectMove === false)
-            //{
-            //    detectMove = false;
-            //}
-            //var includeValueOnMove = false;
-            //if (context.options && context.options.arrays && context.options.arrays.includeValueOnMove)
-            //{
-            //    includeValueOnMove = true;
-            //}
-
-            //var removedItemsLength = removedItems.length;
-            //for (index = commonHead; index < len2 - commonTail; index++)
-            //{
-            //    var indexOnArray2 = arrayIndexOf(seq.indices2, index - commonHead);
-            //    if (indexOnArray2 < 0)
-            //    {
-            //        // added, try to match with a removed item and register as position move
-            //        var isMove = false;
-            //        if (detectMove && removedItemsLength > 0)
-            //        {
-            //            for (var removeItemIndex1 = 0; removeItemIndex1 < removedItemsLength; removeItemIndex1++)
-            //            {
-            //                index1 = removedItems[removeItemIndex1];
-            //                if (matchItems(trimmed1, trimmed2, index1 - commonHead,
-            //                  index - commonHead, matchContext))
-            //                {
-            //                    // store position move as: [originalValue, newPosition, ARRAY_MOVE]
-            //                    result['_' + index1].splice(1, 2, index, ARRAY_MOVE);
-            //                    if (!includeValueOnMove)
-            //                    {
-            //                        // don't include moved value on diff, to save bytes
-            //                        result['_' + index1][0] = '';
-            //                    }
-
-            //                    index2 = index;
-            //                    child = new DiffContext(context.left[index1], context.right[index2]);
-            //                    context.push(child, index2);
-            //                    removedItems.splice(removeItemIndex1, 1);
-            //                    isMove = true;
-            //                    break;
-            //                }
-            //            }
-            //        }
-            //        if (!isMove)
-            //        {
-            //            // added
-            //            result[index] = [array2[index]];
-            //        }
-            //    }
-            //    else
-            //    {
-            //        // match, do inner diff
-            //        index1 = seq.indices1[indexOnArray2] + commonHead;
-            //        index2 = seq.indices2[indexOnArray2] + commonHead;
-            //        child = new DiffContext(context.left[index1], context.right[index2]);
-            //        context.push(child, index2);
-            //    }
-            //}
         }
 
         /// <summary>
@@ -425,14 +316,11 @@ namespace RaJsonDiffPatch
         /// <returns><c>true</c> if the tokens are considered equal; otherwise <c>false</c>.</returns>
         public bool Equals(JToken x, JToken y)
         {
-            if (_enableIdCheck && x.Type == JTokenType.Object && y.Type == JTokenType.Object)
+            if (_enableIdCheck && x != null && y != null &&
+                x.Type == JTokenType.Object && y.Type == JTokenType.Object)
             {
-                var xIdToken = x["id"];
-                var yIdToken = y["id"];
-
-                var xId = xIdToken != null ? xIdToken.Value<string>() : null;
-                var yId = yIdToken != null ? yIdToken.Value<string>() : null;
-                if (xId != null && xId == yId)
+                var xId = GetId(x);
+                if (xId != null && xId == GetId(y))
                 {
                     return true;
                 }
@@ -448,35 +336,29 @@ namespace RaJsonDiffPatch
         /// <returns>A hash code for the token.</returns>
         public int GetHashCode(JToken obj)
         {
-            if (_enableIdCheck && obj.Type == JTokenType.Object)
+            if (_enableIdCheck && obj != null && obj.Type == JTokenType.Object)
             {
-                var xIdToken = obj["id"];
-                var xId = xIdToken != null && xIdToken.HasValues ? xIdToken.Value<string>() : null;
-                if (xId != null) return xId.GetHashCode() + _inner.GetHashCode(obj);
+                var id = GetId(obj);
+
+                // Only the id may take part in the hash. Equals() calls two objects with the same id
+                // equal whatever else they contain, so mixing the content in here would give equal
+                // objects different hash codes.
+                if (id != null) return id.GetHashCode();
             }
 
             return _inner.GetHashCode(obj);
         }
 
         /// <summary>
-        /// Determines whether two <see cref="JToken"/> objects have equal "id" properties.
+        /// Reads an object's "id" property as a string, or <c>null</c> when it has none, it is JSON null,
+        /// or it is not a scalar.
         /// </summary>
-        /// <param name="x">The first token.</param>
-        /// <param name="y">The second token.</param>
-        /// <returns><c>true</c> if both tokens are objects with matching non-null "id" values.</returns>
-        public static bool HaveEqualIds(JToken x, JToken y)
+        private static string GetId(JToken token)
         {
-            if (x.Type == JTokenType.Object && y.Type == JTokenType.Object)
-            {
-                var xIdToken = x["id"];
-                var yIdToken = y["id"];
+            var id = token["id"] as JValue;
+            if (id == null || id.Value == null) return null;
 
-                var xId = xIdToken != null ? xIdToken.Value<string>() : null;
-                var yId = yIdToken != null ? yIdToken.Value<string>() : null;
-                return xId != null && xId == yId;
-            }
-
-            return false;
+            return Convert.ToString(id.Value, CultureInfo.InvariantCulture);
         }
     }
 }

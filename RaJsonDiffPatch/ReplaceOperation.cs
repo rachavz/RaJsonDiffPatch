@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a JSON Patch "replace" operation that replaces the value at the target path.
@@ -47,8 +47,8 @@ namespace RaJsonDiffPatch
         /// <inheritdoc />
         public override void Read(JObject jOperation)
         {
-            Path = new JsonPointer(SplitPath((string)jOperation.GetValue("path")));
-            Value = jOperation.GetValue("value");
+            Path = ReadPointer(jOperation, "path");
+            Value = ReadValue(jOperation);
         }
     }
 }

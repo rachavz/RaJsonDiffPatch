@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a JSON Patch "remove" operation that removes a value at the target path.
@@ -39,7 +39,7 @@ namespace RaJsonDiffPatch
         /// <inheritdoc />
         public override void Read(JObject jOperation)
         {
-            Path = new JsonPointer(SplitPath((string)jOperation.GetValue("path")));
+            Path = ReadPointer(jOperation, "path");
         }
     }
 }

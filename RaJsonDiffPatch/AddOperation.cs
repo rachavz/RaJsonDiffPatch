@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a JSON Patch "add" operation that adds a value to an object or inserts into an array.
@@ -48,8 +48,8 @@ namespace RaJsonDiffPatch
         public override void Read(JObject jOperation)
         {
 
-            Path = new JsonPointer(SplitPath((string)jOperation.GetValue("path")));
-            Value = jOperation.GetValue("value");
+            Path = ReadPointer(jOperation, "path");
+            Value = ReadValue(jOperation);
         }
     }
 }

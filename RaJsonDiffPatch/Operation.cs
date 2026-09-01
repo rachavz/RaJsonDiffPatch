@@ -1,9 +1,9 @@
-﻿using System.Linq;
+using System;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
-namespace RaJsonDiffPatch
+namespace JsonDiffPatch
 {
     /// <summary>
     /// Represents a single JSON Patch operation as defined by RFC 6902.
@@ -56,6 +56,7 @@ namespace RaJsonDiffPatch
         /// <param name="pointer">The JSON Pointer to write as the path value.</param>
         protected static void WritePath(JsonWriter writer, JsonPointer pointer)
         {
+            if (pointer == null) throw new InvalidOperationException("The operation has no 'path'.");
             writer.WritePropertyName("path");
             writer.WriteValue(pointer.ToString());
         }
@@ -67,6 +68,7 @@ namespace RaJsonDiffPatch
         /// <param name="pointer">The JSON Pointer to write as the from value.</param>
         protected static void WriteFromPath(JsonWriter writer, JsonPointer pointer)
         {
+            if (pointer == null) throw new InvalidOperationException("The operation has no 'from' path.");
             writer.WritePropertyName("from");
             writer.WriteValue(pointer.ToString());
         }
@@ -78,16 +80,49 @@ namespace RaJsonDiffPatch
         /// <param name="value">The JToken value to write.</param>
         protected static void WriteValue(JsonWriter writer, JToken value)
         {
+            if (value == null) throw new InvalidOperationException("The operation has no 'value'.");
             writer.WritePropertyName("value");
             value.WriteTo(writer);
         }
 
         /// <summary>
-        /// Splits a JSON Pointer string into its individual tokens, skipping the leading empty segment.
+        /// Reads a JSON Pointer from the named member of an operation object.
         /// </summary>
-        /// <param name="path">The JSON Pointer string (e.g. "/foo/bar").</param>
-        /// <returns>An array of path tokens.</returns>
-        protected static string[] SplitPath(string path) => path.Split('/').Skip(1).ToArray();
+        /// <param name="jOperation">The JSON object representing the operation.</param>
+        /// <param name="member">The member holding the pointer (e.g. "path" or "from").</param>
+        /// <returns>The parsed <see cref="JsonPointer"/>.</returns>
+        /// <exception cref="ArgumentException">The member is absent, null, or not a JSON Pointer string.</exception>
+        protected static JsonPointer ReadPointer(JObject jOperation, string member)
+        {
+            if (jOperation == null) throw new ArgumentNullException(nameof(jOperation));
+
+            var token = jOperation.GetValue(member) as JValue;
+            var pointer = token == null ? null : token.Value as string;
+            if (pointer == null)
+                throw new ArgumentException(
+                    "A '" + (string)jOperation["op"] + "' operation requires a string '" + member + "' member.",
+                    nameof(jOperation));
+
+            return new JsonPointer(pointer);
+        }
+
+        /// <summary>
+        /// Reads the "value" member of an operation object.
+        /// </summary>
+        /// <param name="jOperation">The JSON object representing the operation.</param>
+        /// <returns>The value token. An explicit JSON <c>null</c> is a legal value and is returned as such.</returns>
+        /// <exception cref="ArgumentException">The member is absent.</exception>
+        protected static JToken ReadValue(JObject jOperation)
+        {
+            if (jOperation == null) throw new ArgumentNullException(nameof(jOperation));
+
+            var value = jOperation.GetValue("value");
+            if (value == null)
+                throw new ArgumentException(
+                    "A '" + (string)jOperation["op"] + "' operation requires a 'value' member.", nameof(jOperation));
+
+            return value;
+        }
 
         /// <summary>
         /// Deserializes this operation from the specified JSON object.

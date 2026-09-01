@@ -215,3 +215,6 @@ pip-log.txt
 #Mr Developer
 .mr.developer.cfg
 /.vs
+
+# Local assistant config, not part of the project
+.claude/

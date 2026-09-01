@@ -1,5 +1,5 @@
-﻿using System.IO;
-using RaJsonDiffPatch;
+using System.IO;
+using JsonDiffPatch;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 

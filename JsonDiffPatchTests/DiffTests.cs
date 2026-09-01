@@ -1,4 +1,4 @@
-﻿using RaJsonDiffPatch;
+using JsonDiffPatch;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -55,7 +55,7 @@ namespace Tavis.JsonPatch.Tests
 
         [TestCase("[1,2,3,4]",
             "[5,6,7]",
-            ExpectedResult = "[{\"op\":\"replace\",\"path\":\"/\",\"value\":[5,6,7]}]",
+            ExpectedResult = "[{\"op\":\"replace\",\"path\":\"\",\"value\":[5,6,7]}]",
             TestName = "JsonPatch handles a simple array and replaces it")]
 
         [TestCase("{a:[1,2,3,4]}",

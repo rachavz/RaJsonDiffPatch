@@ -1,4 +1,4 @@
-﻿using RaJsonDiffPatch;
+using JsonDiffPatch;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
