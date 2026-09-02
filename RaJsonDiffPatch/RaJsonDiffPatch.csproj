@@ -11,7 +11,7 @@
 
   <PropertyGroup>
     <PackageId>RaJsonDiffPatch</PackageId>
-    <Version>26.9.2</Version>
+    <Version>26.9.3</Version>
     <Authors>Raúl Chávez Vázquez</Authors>
     <Description>JSON Patch (RFC 6902) and JSON Pointer (RFC 6901) for Json.NET documents, on any platform supporting .NET Standard 2.0+. Applies patch documents to JToken trees and generates them by diffing two documents, optionally matching array elements by their id property.</Description>
     <Copyright>Copyright (c) 2026 - 2099 Raúl Chávez Vázquez</Copyright>
