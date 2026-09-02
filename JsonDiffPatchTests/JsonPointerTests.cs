@@ -96,5 +96,42 @@ namespace Tavis.JsonPatch.Tests
             Assert.AreEqual("/a~1b", scalar.Operations.First().Path.ToString());
             Assert.AreEqual("/a~1b", array.Operations.First().Path.ToString());
         }
+
+        [Test]
+        public void Pointers_are_equal_by_value()
+        {
+            var a = new JsonPointer("/a~1b/0");
+            var b = new JsonPointer("/a~1b/0");
+
+            Assert.That(a.Equals(b), Is.True);
+            Assert.That(a.Equals((object)b), Is.True);
+            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
+            Assert.That(new JsonPointer(""), Is.EqualTo(new JsonPointer("")));
+
+            Assert.That(a, Is.Not.EqualTo(new JsonPointer("/a~1b/1")));
+            Assert.That(a, Is.Not.EqualTo(new JsonPointer("/a~1b")));
+            Assert.That(a.Equals(null), Is.False);
+        }
+
+        [Test]
+        public void Non_canonical_escapes_are_rendered_canonically()
+        {
+            // "~2" is not an RFC 6901 escape, so the tilde is a literal and must be re-escaped as "~0".
+            Assert.That(new JsonPointer("/a~2").ToString(), Is.EqualTo("/a~02"));
+        }
+
+        [TestCase("", "", true)]
+        [TestCase("", "/a", true)]
+        [TestCase("/a", "/a", true)]
+        [TestCase("/a", "/a/b", true)]
+        [TestCase("/a", "/a/", true)]
+        [TestCase("/a", "/ab", false)]
+        [TestCase("/a/b", "/a", false)]
+        [TestCase("/a~1b", "/a~1b/c", true)]
+        [TestCase("/a~1b", "/a/b/c", false)]
+        public void Descendant_test_compares_whole_tokens(string ancestor, string path, bool expected)
+        {
+            Assert.That(new JsonPointer(path).IsSelfOrDescendantOf(new JsonPointer(ancestor)), Is.EqualTo(expected));
+        }
     }
 }

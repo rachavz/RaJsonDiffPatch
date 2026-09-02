@@ -29,6 +29,14 @@ duplicated type names would be ambiguous.
 - Root-level paths, out-of-range array indices, unknown `op` names and non-array patch documents
   raised `NullReferenceException` or silently did nothing; they now report what is wrong.
 - `move` rejected `/a` -> `/ab` as "below from path" because the check was a string prefix test.
+- A property named `""` (the empty string) was diffed at its parent's path instead of at `/`, so the
+  patch removed or replaced the wrong value.
+- The differ compared scalars by their text, so it never noticed a changed `byte[]`, ignored
+  sub-second changes to dates, and reported `1.10m` -> `1.1` as a change. It now uses
+  `JToken.DeepEquals`, like `test`.
+- The differ allocated roughly a hundred bytes of garbage per byte of patch it produced. It now
+  builds pointers from tokens instead of re-parsing strings and short-circuits unchanged subtrees;
+  diffing is several times faster and allocates an order of magnitude less.
 
 ## Diffing two documents
 
@@ -111,14 +119,16 @@ A pointer that cannot be resolved throws `ArgumentException` naming the segment 
 - **The differ does not emit `move`, `copy` or `test`.** It produces `add`, `remove` and `replace`
   only. Array edits that change the length are expressed as a removal of the changed span followed
   by additions, so the patch is correct but not minimal.
-- **`test` compares with `JToken.DeepEquals`**: object member order is not significant, but numbers
-  are compared by JSON type, so `1` does not equal `1.0`. The differ is stricter still — it compares
-  scalars by their textual form, so it reports `1` -> `1.0` as a `replace`.
+- **`test` and the differ both compare with `JToken.DeepEquals`**: object member order is not
+  significant, but numbers are compared by JSON type, so `1` does not equal `1.0` and the differ
+  reports that as a `replace`.
+- **`JsonPointer` has value equality.** Two pointers with the same tokens are equal and hash alike,
+  so they can be dictionary keys. `IsSelfOrDescendantOf` compares whole tokens, not string prefixes.
 
 ## Targets
 
 `netstandard2.0` — .NET Framework 4.6.1+, .NET Core 2.0+, .NET 5+, Mono, Xamarin, Unity.
-The only dependency is `Newtonsoft.Json` 13.0.3.
+The only dependency is `Newtonsoft.Json` 13.0.4.
 
 ## Credits and licence
 

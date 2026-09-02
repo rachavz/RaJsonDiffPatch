@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json;
@@ -149,19 +150,10 @@ namespace JsonDiffPatch
         {
             // Deliberately neither disposed nor closed: disposing the writer would close the
             // caller's stream, and ToStream/ToString still need to read back from it.
-            var sw = new JsonTextWriter(new StreamWriter(stream, new UTF8Encoding(false), 1024, true));
-            sw.Formatting = formatting;
-
-            sw.WriteStartArray();
-
-            foreach (var operation in Operations)
-            {
-                operation.Write(sw);
-            }
-            
-            sw.WriteEndArray();
-
-            sw.Flush();
+            var writer = new JsonTextWriter(new StreamWriter(stream, new UTF8Encoding(false), 1024, true));
+            writer.Formatting = formatting;
+            Write(writer);
+            writer.Flush();
         }
 
         /// <summary>
@@ -180,15 +172,25 @@ namespace JsonDiffPatch
         /// <returns>The JSON string representation of this patch document.</returns>
         public string ToString(Formatting formatting)
         {
-            using (var ms = new MemoryStream())
+            var sw = new StringWriter(CultureInfo.InvariantCulture);
+            using (var writer = new JsonTextWriter(sw) { Formatting = formatting })
             {
-                CopyToStream(ms, formatting);
-                ms.Position = 0;
-                using (StreamReader reader = new StreamReader(ms, Encoding.UTF8))
-                {
-                    return reader.ReadToEnd();
-                }
+                Write(writer);
             }
+
+            return sw.ToString();
+        }
+
+        private void Write(JsonWriter writer)
+        {
+            writer.WriteStartArray();
+
+            foreach (var operation in _operations)
+            {
+                operation.Write(writer);
+            }
+
+            writer.WriteEndArray();
         }
     }
 }

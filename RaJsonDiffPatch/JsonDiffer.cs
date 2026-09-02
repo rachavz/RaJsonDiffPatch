@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
@@ -14,339 +13,183 @@ namespace JsonDiffPatch
     public class JsonDiffer
     {
         /// <summary>
-        /// Extends a JSON Pointer path by appending a key segment, encoding special characters.
-        /// </summary>
-        /// <param name="path">The current path.</param>
-        /// <param name="extension">The key to append.</param>
-        /// <returns>The extended path.</returns>
-        internal static string Extend(string path, string extension)
-        {
-            return path + "/" + EncodeKey(extension);
-        }
-
-        /// <summary>
-        /// Encodes a JSON Pointer token by escaping <c>~</c> and <c>/</c> characters per RFC 6901.
-        /// </summary>
-        /// <param name="key">The key to encode.</param>
-        /// <returns>The encoded key.</returns>
-        private static string EncodeKey(string key) => JsonPointer.Encode(key);
-
-        /// <summary>
-        /// Builds an <see cref="Operation"/> from the specified op name, path, key, and value.
-        /// </summary>
-        /// <param name="op">The operation name.</param>
-        /// <param name="path">The base path.</param>
-        /// <param name="key">The key to extend the path with, or <c>null</c> to use the path as-is.</param>
-        /// <param name="value">The value for the operation, or <c>null</c> for operations without a value.</param>
-        /// <returns>The constructed <see cref="Operation"/>.</returns>
-        private static Operation Build(string op, string path, string key, JToken value)
-        {
-            var pointer = new JsonPointer(string.IsNullOrEmpty(key) ? path : Extend(path, key));
-            switch (op)
-            {
-                case "add": return new AddOperation(pointer, value.DeepClone());
-                case "remove": return new RemoveOperation(pointer);
-                case "replace": return new ReplaceOperation(pointer, value.DeepClone());
-                default: throw new ArgumentException("Unknown operation: " + op, nameof(op));
-            }
-        }
-
-        /// <summary>
-        /// Creates an "add" operation for the specified path and value.
-        /// </summary>
-        /// <param name="path">The base path.</param>
-        /// <param name="key">The key to extend the path with.</param>
-        /// <param name="value">The value to add.</param>
-        /// <returns>An <see cref="Operation"/> representing the add.</returns>
-        internal static Operation Add(string path, string key, JToken value)
-        {
-            return Build("add", path, key, value);
-        }
-
-        /// <summary>
-        /// Creates a "remove" operation for the specified path.
-        /// </summary>
-        /// <param name="path">The base path.</param>
-        /// <param name="key">The key to extend the path with.</param>
-        /// <returns>An <see cref="Operation"/> representing the remove.</returns>
-        internal static Operation Remove(string path, string key)
-        {
-            return Build("remove", path, key, null);
-        }
-
-        /// <summary>
-        /// Creates a "replace" operation for the specified path and value.
-        /// </summary>
-        /// <param name="path">The base path.</param>
-        /// <param name="key">The key to extend the path with.</param>
-        /// <param name="value">The replacement value.</param>
-        /// <returns>An <see cref="Operation"/> representing the replace.</returns>
-        internal static Operation Replace(string path, string key, JToken value)
-        {
-            return Build("replace", path, key, value);
-        }
-
-        /// <summary>
-        /// Recursively calculates the patch operations needed to transform <paramref name="left"/> into <paramref name="right"/>.
-        /// </summary>
-        /// <param name="left">The original JSON token.</param>
-        /// <param name="right">The target JSON token.</param>
-        /// <param name="useIdToDetermineEquality">
-        /// If <c>true</c>, uses the "id" property of objects within arrays to determine equality instead of deep comparison.
-        /// </param>
-        /// <param name="path">The current JSON Pointer path (used during recursion).</param>
-        /// <returns>An enumerable sequence of patch operations.</returns>
-        internal static IEnumerable<Operation> CalculatePatch(JToken left, JToken right, bool useIdToDetermineEquality,
-            string path = "")
-        {
-            if (left.Type != right.Type)
-            {
-                yield return JsonDiffer.Replace(path, "", right);
-                yield break;
-            }
-
-            if (left.Type == JTokenType.Array)
-            {
-                Operation prev = null;
-                foreach (var operation in ProcessArray(left, right, path, useIdToDetermineEquality))
-                {
-                    var prevRemove = prev as RemoveOperation;
-                    var add = operation as AddOperation;
-                    if (prevRemove != null && add != null && add.Path.ToString() == prevRemove.Path.ToString())
-                    {
-                        yield return Replace(add.Path.ToString(), "", add.Value);
-                        prev = null;
-                    }
-                    else
-                    {
-                        if (prev != null) yield return prev;
-                        prev = operation;
-                    }
-                }
-
-                if (prev != null)
-                {
-                    yield return prev;
-                }
-            }
-            else if (left.Type == JTokenType.Object)
-            {
-                var lprops = ((IDictionary<string, JToken>) left).OrderBy(p => p.Key);
-                var rprops = ((IDictionary<string, JToken>) right).OrderBy(p => p.Key);
-
-                foreach (var removed in lprops.Except(rprops, MatchesKey.Instance))
-                {
-                    yield return JsonDiffer.Remove(path, removed.Key);
-                }
-
-                foreach (var added in rprops.Except(lprops, MatchesKey.Instance))
-                {
-                    yield return JsonDiffer.Add(path, added.Key, added.Value);
-                }
-
-                var matchedKeys = lprops.Select(x => x.Key).Intersect(rprops.Select(y => y.Key));
-                var zipped = matchedKeys.Select(k => new {key = k, left = left[k], right = right[k]});
-
-                foreach (var match in zipped)
-                {
-                    string newPath = path + "/" + EncodeKey(match.key);
-                    foreach (var patch in CalculatePatch(match.left, match.right, useIdToDetermineEquality, newPath))
-                        yield return patch;
-                }
-
-                yield break;
-            }
-            else
-            {
-                // Two values, same type, not JObject so no properties
-
-                if (left.ToString() == right.ToString())
-                    yield break;
-                else
-                    yield return JsonDiffer.Replace(path, "", right);
-            }
-        }
-
-        /// <summary>
-        /// Processes two arrays to determine the set of patch operations needed to transform one into the other.
-        /// </summary>
-        /// <param name="left">The original array token.</param>
-        /// <param name="right">The target array token.</param>
-        /// <param name="path">The current JSON Pointer path.</param>
-        /// <param name="useIdPropertyToDetermineEquality">
-        /// If <c>true</c>, uses the "id" property to determine element equality.
-        /// </param>
-        /// <returns>An enumerable sequence of patch operations.</returns>
-        private static IEnumerable<Operation> ProcessArray(JToken left, JToken right, string path,
-            bool useIdPropertyToDetermineEquality)
-        {
-            var comparer =
-                new CustomCheckEqualityComparer(useIdPropertyToDetermineEquality, new JTokenEqualityComparer());
-
-            int commonHead = 0;
-            int commonTail = 0;
-            var array1 = left.ToArray();
-            var len1 = array1.Length;
-            var array2 = right.ToArray();
-            var len2 = array2.Length;
-            //    if (len1 == 0 && len2 ==0 ) yield break;
-            while (commonHead < len1 && commonHead < len2)
-            {
-                if (comparer.Equals(array1[commonHead], array2[commonHead]) == false) break;
-
-                //diff and yield objects here
-                foreach (var operation in CalculatePatch(array1[commonHead], array2[commonHead],
-                    useIdPropertyToDetermineEquality, path + "/" + commonHead))
-                {
-                    yield return operation;
-                }
-
-                commonHead++;
-            }
-
-            // separate common tail
-            while (commonTail + commonHead < len1 && commonTail + commonHead < len2)
-            {
-                if (comparer.Equals(array1[len1 - 1 - commonTail], array2[len2 - 1 - commonTail]) == false) break;
-
-                var index1 = len1 - 1 - commonTail;
-                var index2 = len2 - 1 - commonTail;
-                foreach (var operation in CalculatePatch(array1[index1], array2[index2],
-                    useIdPropertyToDetermineEquality, path + "/" + index1))
-                {
-                    yield return operation;
-                }
-
-                commonTail++;
-            }
-
-            if (commonHead == 0 && commonTail == 0 && len2 > 0 && len1 > 0)
-            {
-                yield return new ReplaceOperation(new JsonPointer(path), new JArray(array2));
-                yield break;
-            }
-
-            var leftMiddle = array1.Skip(commonHead).Take(array1.Length - commonTail - commonHead).ToArray();
-            var rightMiddle = array2.Skip(commonHead).Take(array2.Length - commonTail - commonHead).ToArray();
-
-            // Just a replace of values!
-            if (leftMiddle.Length == rightMiddle.Length)
-            {
-                for (int i = 0; i < leftMiddle.Length; i++)
-                {
-                    foreach (var operation in CalculatePatch(leftMiddle[i], rightMiddle[i],
-                        useIdPropertyToDetermineEquality, $"{path}/{commonHead + i}"))
-                    {
-                        yield return operation;
-                    }
-                }
-
-                yield break;
-            }
-
-            foreach (var jToken in leftMiddle)
-            {
-                yield return new RemoveOperation(new JsonPointer($"{path}/{commonHead}"));
-            }
-
-            for (int i = 0; i < rightMiddle.Length; i++)
-            {
-                yield return new AddOperation(new JsonPointer($"{path}/{commonHead + i}"), rightMiddle[i]);
-            }
-
-        }
-
-        /// <summary>
-        /// Compares key-value pairs by key only, used for set difference operations on object properties.
-        /// </summary>
-        private class MatchesKey : IEqualityComparer<KeyValuePair<string, JToken>>
-        {
-            public static MatchesKey Instance = new MatchesKey();
-
-            public bool Equals(KeyValuePair<string, JToken> x, KeyValuePair<string, JToken> y)
-            {
-                return x.Key.Equals(y.Key);
-            }
-
-            public int GetHashCode(KeyValuePair<string, JToken> obj)
-            {
-                return obj.Key.GetHashCode();
-            }
-        }
-
-        /// <summary>
         /// Computes the diff between two JSON tokens and returns a <see cref="PatchDocument"/> describing the changes.
         /// </summary>
         /// <param name="from">The original JSON token.</param>
         /// <param name="to">The target JSON token.</param>
         /// <param name="useIdPropertyToDetermineEquality">
-        /// If <c>true</c>, uses the "id" property on array members to determine equality.
+        /// If <c>true</c>, two objects inside an array are treated as the same element when their "id" properties match,
+        /// and are then diffed member by member instead of being removed and re-added.
         /// </param>
         /// <returns>A <see cref="PatchDocument"/> containing the operations to transform <paramref name="from"/> into <paramref name="to"/>.</returns>
         public PatchDocument Diff(JToken @from, JToken to, bool useIdPropertyToDetermineEquality)
         {
-            return new PatchDocument(CalculatePatch(@from, to, useIdPropertyToDetermineEquality).ToArray());
-        }
-    }
+            if (@from == null) throw new ArgumentNullException(nameof(@from));
+            if (to == null) throw new ArgumentNullException(nameof(to));
 
-    /// <summary>
-    /// Compares <see cref="JToken"/> instances for equality, optionally using an "id" property check.
-    /// </summary>
-    internal class CustomCheckEqualityComparer : IEqualityComparer<JToken>
-    {
-        private readonly bool _enableIdCheck;
-        private readonly IEqualityComparer<JToken> _inner;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="CustomCheckEqualityComparer"/> class.
-        /// </summary>
-        /// <param name="enableIdCheck">If <c>true</c>, compares objects by their "id" property when present.</param>
-        /// <param name="inner">The inner equality comparer to fall back to.</param>
-        public CustomCheckEqualityComparer(bool enableIdCheck, IEqualityComparer<JToken> inner)
-        {
-            _enableIdCheck = enableIdCheck;
-            _inner = inner;
+            var operations = new List<Operation>();
+            Diff(@from, to, useIdPropertyToDetermineEquality, new string[0], operations);
+            return new PatchDocument(operations.ToArray());
         }
 
         /// <summary>
-        /// Determines whether two <see cref="JToken"/> instances are equal, using the "id" property check if enabled.
+        /// Appends the operations that turn <paramref name="left"/> into <paramref name="right"/> to <paramref name="output"/>.
         /// </summary>
-        /// <param name="x">The first token.</param>
-        /// <param name="y">The second token.</param>
-        /// <returns><c>true</c> if the tokens are considered equal; otherwise <c>false</c>.</returns>
-        public bool Equals(JToken x, JToken y)
+        /// <remarks>
+        /// The current location is carried as decoded reference tokens rather than an encoded pointer string, so
+        /// operations are built straight from the tokens without an encode/decode round trip per operation.
+        /// </remarks>
+        private static void Diff(JToken left, JToken right, bool useId, string[] path, List<Operation> output)
         {
-            if (_enableIdCheck && x != null && y != null &&
-                x.Type == JTokenType.Object && y.Type == JTokenType.Object)
+            if (left.Type != right.Type)
             {
-                var xId = GetId(x);
-                if (xId != null && xId == GetId(y))
+                output.Add(new ReplaceOperation(new JsonPointer(path), right.DeepClone()));
+                return;
+            }
+
+            switch (left.Type)
+            {
+                case JTokenType.Array:
+                    int start = output.Count;
+                    DiffArray((JArray)left, (JArray)right, useId, path, output);
+                    CoalesceRemoveAdd(output, start);
+                    break;
+
+                case JTokenType.Object:
+                    DiffObject((JObject)left, (JObject)right, useId, path, output);
+                    break;
+
+                default:
+                    if (!JToken.DeepEquals(left, right))
+                    {
+                        output.Add(new ReplaceOperation(new JsonPointer(path), right.DeepClone()));
+                    }
+                    break;
+            }
+        }
+
+        private static void DiffObject(JObject left, JObject right, bool useId, string[] path, List<Operation> output)
+        {
+            // Sorted so that the emitted order does not depend on the member order of either document.
+            var lprops = SortedProperties(left);
+            var rprops = SortedProperties(right);
+
+            JToken other;
+            foreach (var prop in lprops)
+            {
+                if (!right.TryGetValue(prop.Name, out other))
                 {
+                    output.Add(new RemoveOperation(new JsonPointer(Append(path, prop.Name))));
+                }
+            }
+
+            foreach (var prop in rprops)
+            {
+                if (!left.TryGetValue(prop.Name, out other))
+                {
+                    output.Add(new AddOperation(new JsonPointer(Append(path, prop.Name)), prop.Value.DeepClone()));
+                }
+            }
+
+            foreach (var prop in lprops)
+            {
+                if (right.TryGetValue(prop.Name, out other))
+                {
+                    Diff(prop.Value, other, useId, Append(path, prop.Name), output);
+                }
+            }
+        }
+
+        private static JProperty[] SortedProperties(JObject obj)
+        {
+            var props = new JProperty[obj.Count];
+            int n = 0;
+            foreach (var child in obj.Children())
+            {
+                props[n++] = (JProperty)child;
+            }
+
+            Array.Sort(props, PropertyNameComparer.Instance);
+            return props;
+        }
+
+        private static void DiffArray(JArray left, JArray right, bool useId, string[] path, List<Operation> output)
+        {
+            int len1 = left.Count;
+            int len2 = right.Count;
+
+            int head = 0;
+            while (head < len1 && head < len2 && SameElement(left[head], right[head], useId, path, head, output))
+            {
+                head++;
+            }
+
+            int tail = 0;
+            while (tail + head < len1 && tail + head < len2)
+            {
+                var index1 = len1 - 1 - tail;
+                if (!SameElement(left[index1], right[len2 - 1 - tail], useId, path, index1, output)) break;
+                tail++;
+            }
+
+            if (head == 0 && tail == 0 && len1 > 0 && len2 > 0)
+            {
+                output.Add(new ReplaceOperation(new JsonPointer(path), right.DeepClone()));
+                return;
+            }
+
+            int middle1 = len1 - head - tail;
+            int middle2 = len2 - head - tail;
+
+            if (middle1 == middle2)
+            {
+                // A middle of equal length is diffed element by element. Most elements in a list of
+                // records are untouched, and a deep-equality check is far cheaper than diffing them.
+                for (int i = 0; i < middle1; i++)
+                {
+                    var l = left[head + i];
+                    var r = right[head + i];
+                    if (JToken.DeepEquals(l, r)) continue;
+
+                    Diff(l, r, useId, Append(path, head + i), output);
+                }
+
+                return;
+            }
+
+            // Every removal happens at the same index, because each one shifts the rest of the middle down.
+            var removeAt = new JsonPointer(Append(path, head));
+            for (int i = 0; i < middle1; i++)
+            {
+                output.Add(new RemoveOperation(removeAt));
+            }
+
+            for (int i = 0; i < middle2; i++)
+            {
+                output.Add(new AddOperation(new JsonPointer(Append(path, head + i)), right[head + i].DeepClone()));
+            }
+        }
+
+        /// <summary>
+        /// Decides whether two array elements at the same position line up. Deep-equal elements match and need no
+        /// operations. With <paramref name="useId"/>, objects sharing an "id" also match, and the operations that
+        /// reconcile their contents are emitted here.
+        /// </summary>
+        private static bool SameElement(JToken left, JToken right, bool useId, string[] path, int index, List<Operation> output)
+        {
+            if (JToken.DeepEquals(left, right)) return true;
+
+            if (useId && left.Type == JTokenType.Object && right.Type == JTokenType.Object)
+            {
+                var id = GetId(left);
+                if (id != null && id == GetId(right))
+                {
+                    Diff(left, right, true, Append(path, index), output);
                     return true;
                 }
             }
 
-            return _inner.Equals(x, y);
-        }
-
-        /// <summary>
-        /// Returns a hash code for the specified <see cref="JToken"/>.
-        /// </summary>
-        /// <param name="obj">The token to hash.</param>
-        /// <returns>A hash code for the token.</returns>
-        public int GetHashCode(JToken obj)
-        {
-            if (_enableIdCheck && obj != null && obj.Type == JTokenType.Object)
-            {
-                var id = GetId(obj);
-
-                // Only the id may take part in the hash. Equals() calls two objects with the same id
-                // equal whatever else they contain, so mixing the content in here would give equal
-                // objects different hash codes.
-                if (id != null) return id.GetHashCode();
-            }
-
-            return _inner.GetHashCode(obj);
+            return false;
         }
 
         /// <summary>
@@ -359,6 +202,56 @@ namespace JsonDiffPatch
             if (id == null || id.Value == null) return null;
 
             return Convert.ToString(id.Value, CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Rewrites a remove immediately followed by an add at the same path, which is how an array's middle is
+        /// rebuilt, into a single replace.
+        /// </summary>
+        private static void CoalesceRemoveAdd(List<Operation> output, int start)
+        {
+            int write = start;
+            for (int read = start; read < output.Count; read++)
+            {
+                var add = output[read] as AddOperation;
+                if (add != null && write > start)
+                {
+                    var previous = output[write - 1] as RemoveOperation;
+                    if (previous != null && previous.Path.Equals(add.Path))
+                    {
+                        output[write - 1] = new ReplaceOperation(add.Path, add.Value);
+                        continue;
+                    }
+                }
+
+                output[write++] = output[read];
+            }
+
+            output.RemoveRange(write, output.Count - write);
+        }
+
+        private static string[] Append(string[] path, string token)
+        {
+            var result = new string[path.Length + 1];
+            Array.Copy(path, result, path.Length);
+            result[path.Length] = token;
+            return result;
+        }
+
+        private static string[] Append(string[] path, int index)
+        {
+            return Append(path, index.ToString(CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
+        /// Orders properties by name using the same culture-sensitive comparison as <c>OrderBy</c>, which is what
+        /// earlier versions emitted; changing it would reorder existing patch output.
+        /// </summary>
+        private sealed class PropertyNameComparer : IComparer<JProperty>
+        {
+            public static readonly PropertyNameComparer Instance = new PropertyNameComparer();
+
+            public int Compare(JProperty x, JProperty y) => Comparer<string>.Default.Compare(x.Name, y.Name);
         }
     }
 }

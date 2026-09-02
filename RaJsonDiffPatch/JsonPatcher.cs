@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using Newtonsoft.Json.Linq;
 using Tavis;
 
@@ -29,38 +28,42 @@ namespace JsonDiffPatch
         /// <inheritdoc />
         protected override void Add(AddOperation operation, JToken target)
         {
-            var parentPointer = operation.Path.ParentPointer;
-            if (parentPointer == null)
-                throw new ArgumentException(
-                    "Cannot 'add' at the root of the document; use 'replace' instead.", nameof(operation));
+            Add(operation.Path, operation.Value, target);
+        }
 
-            var name = operation.Path.LastToken;
-            var parent = parentPointer.Find(target);
+        private static void Add(JsonPointer path, JToken value, JToken target)
+        {
+            if (path.Count == 0)
+                throw new ArgumentException(
+                    "Cannot 'add' at the root of the document; use 'replace' instead.", nameof(path));
+
+            var name = path.LastToken;
+            var parent = path.Find(target, path.Count - 1);
 
             var parentArray = parent as JArray;
             if (parentArray != null)
             {
                 if (name == "-")
                 {
-                    parentArray.Add(operation.Value);
+                    parentArray.Add(value);
                     return;
                 }
 
                 int index;
-                if (!TryParseIndex(name, out index) || index > parentArray.Count)
+                if (!JsonPointer.TryParseIndex(name, out index) || index > parentArray.Count)
                     throw new ArgumentException(
                         "'" + name + "' is not a valid insertion index into the array of " + parentArray.Count +
-                        " element(s) at '" + parentPointer + "'.", nameof(operation));
+                        " element(s) at '" + path.ParentPointer + "'.", nameof(path));
 
-                parentArray.Insert(index, operation.Value);
+                parentArray.Insert(index, value);
                 return;
             }
 
             var parentObject = parent as JObject;
             if (parentObject == null)
                 throw new ArgumentException(
-                    "Cannot add '" + name + "': the value at '" + parentPointer + "' is a " + parent.Type +
-                    ", not an object or an array.", nameof(operation));
+                    "Cannot add '" + name + "': the value at '" + path.ParentPointer + "' is a " + parent.Type +
+                    ", not an object or an array.", nameof(path));
 
             // Adding to a path that already holds an array appends to that array rather than replacing it.
             // That is not what RFC 6902 says, but it is this library's long-standing behaviour and callers
@@ -68,32 +71,25 @@ namespace JsonDiffPatch
             var existingArray = parentObject[name] as JArray;
             if (existingArray != null)
             {
-                existingArray.Add(operation.Value);
+                existingArray.Add(value);
                 return;
             }
 
-            parentObject[name] = operation.Value;
-        }
-
-        /// <summary>
-        /// Parses an array index, rejecting the signs, whitespace and leading zeroes that RFC 6901 disallows.
-        /// </summary>
-        private static bool TryParseIndex(string token, out int index)
-        {
-            index = 0;
-            if (string.IsNullOrEmpty(token)) return false;
-            if (token.Length > 1 && token[0] == '0') return false;
-
-            return int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out index);
+            parentObject[name] = value;
         }
 
         /// <inheritdoc />
         protected override void Remove(RemoveOperation operation, JToken target)
         {
-            var token = operation.Path.Find(target);
+            Remove(operation.Path, target);
+        }
+
+        private static void Remove(JsonPointer path, JToken target)
+        {
+            var token = path.Find(target);
             if (token.Parent == null)
                 throw new ArgumentException(
-                    "Cannot 'remove' the root of the document.", nameof(operation));
+                    "Cannot 'remove' the root of the document.", nameof(path));
 
             if (token.Parent is JProperty)
             {
@@ -108,33 +104,14 @@ namespace JsonDiffPatch
         /// <inheritdoc />
         protected override void Move(MoveOperation operation, JToken target)
         {
-            if (IsSelfOrDescendantOf(operation.Path, operation.FromPath))
+            if (operation.Path.IsSelfOrDescendantOf(operation.FromPath))
                 throw new ArgumentException(
                     "Cannot move '" + operation.FromPath + "' into itself ('" + operation.Path + "').",
                     nameof(operation));
 
             var token = operation.FromPath.Find(target);
-            Remove(new RemoveOperation(operation.FromPath), target);
-            Add(new AddOperation(operation.Path, token), target);
-        }
-
-        /// <summary>
-        /// Determines whether <paramref name="path"/> is <paramref name="ancestor"/> itself or nested inside it.
-        /// </summary>
-        /// <remarks>
-        /// Compares whole reference tokens, so "/ab" is not treated as being inside "/a" the way a plain
-        /// string prefix test would. Both pointers render their separators unambiguously, because
-        /// <see cref="JsonPointer.ToString"/> escapes any '/' occurring inside a token.
-        /// </remarks>
-        private static bool IsSelfOrDescendantOf(JsonPointer path, JsonPointer ancestor)
-        {
-            var a = ancestor.ToString();
-            var p = path.ToString();
-
-            if (p.Length < a.Length) return false;
-            if (!p.StartsWith(a, StringComparison.Ordinal)) return false;
-
-            return p.Length == a.Length || p[a.Length] == '/';
+            Remove(operation.FromPath, target);
+            Add(operation.Path, token, target);
         }
 
         /// <inheritdoc />
@@ -151,7 +128,7 @@ namespace JsonDiffPatch
         protected override void Copy(CopyOperation operation, JToken target)
         {
             var token = operation.FromPath.Find(target);
-            Add(new AddOperation(operation.Path, token.DeepClone()), target);
+            Add(operation.Path, token.DeepClone(), target);
         }
     }
 }

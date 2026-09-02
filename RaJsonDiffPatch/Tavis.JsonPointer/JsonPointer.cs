@@ -1,9 +1,7 @@
 //see https://github.com/tavis-software/Tavis.JsonPointer
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using Newtonsoft.Json.Linq;
 
@@ -11,8 +9,9 @@ namespace Tavis
 {
     /// <summary>
     /// Represents a JSON Pointer as defined by RFC 6901, used to target specific values within a JSON document.
+    /// Instances are immutable; two pointers are equal when they consist of the same reference tokens.
     /// </summary>
-    public class JsonPointer
+    public class JsonPointer : IEquatable<JsonPointer>
     {
         private static readonly string[] RootTokens = new string[0];
 
@@ -20,7 +19,9 @@ namespace Tavis
         /// The reference tokens, held in decoded form: <c>~1</c> and <c>~0</c> escapes have already been
         /// resolved, so each entry is the literal property name or array index it targets.
         /// </summary>
-        private readonly IReadOnlyList<string> _tokens;
+        private readonly string[] _tokens;
+
+        private string _text;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonPointer"/> class from a pointer string.
@@ -34,6 +35,7 @@ namespace Tavis
             if (pointer.Length == 0)
             {
                 _tokens = RootTokens;
+                _text = string.Empty;
                 return;
             }
 
@@ -41,16 +43,24 @@ namespace Tavis
                 throw new ArgumentException(
                     "A JSON Pointer must either be empty or start with '/'; got '" + pointer + "'.", nameof(pointer));
 
-            _tokens = pointer.Split('/').Skip(1).Select(Decode).ToArray();
+            var parts = pointer.Split('/');
+            var tokens = new string[parts.Length - 1];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                tokens[i] = Decode(parts[i + 1]);
+            }
+
+            _tokens = tokens;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="JsonPointer"/> class from already decoded reference tokens.
+        /// The array is taken over, not copied, so the caller must not modify it afterwards.
         /// </summary>
         /// <param name="decodedTokens">
         /// The reference tokens, with any <c>~1</c>/<c>~0</c> escapes already resolved.
         /// </param>
-        internal JsonPointer(IReadOnlyList<string> decodedTokens)
+        internal JsonPointer(string[] decodedTokens)
         {
             _tokens = decodedTokens ?? RootTokens;
         }
@@ -64,24 +74,38 @@ namespace Tavis
         /// The order matters: unescaping <c>~0</c> first would turn <c>~01</c> into <c>~1</c> and then into <c>/</c>,
         /// losing the literal <c>~1</c> the pointer actually referred to.
         /// </remarks>
-        private static string Decode(string token) => token.Replace("~1", "/").Replace("~0", "~");
+        private static string Decode(string token)
+        {
+            if (token.IndexOf('~') < 0) return token;
+            return token.Replace("~1", "/").Replace("~0", "~");
+        }
 
         /// <summary>
         /// Encodes a reference token by escaping <c>~</c> as <c>~0</c> and then <c>/</c> as <c>~1</c>, per RFC 6901.
         /// </summary>
         /// <param name="token">The literal property name to encode.</param>
         /// <returns>The encoded token.</returns>
-        public static string Encode(string token) => token.Replace("~", "~0").Replace("/", "~1");
+        public static string Encode(string token)
+        {
+            if (token == null) throw new ArgumentNullException(nameof(token));
+            if (token.IndexOf('~') < 0 && token.IndexOf('/') < 0) return token;
+            return token.Replace("~", "~0").Replace("/", "~1");
+        }
 
         /// <summary>
         /// Gets the number of reference tokens in this pointer. Zero means the pointer targets the whole document.
         /// </summary>
-        public int Count => _tokens.Count;
+        public int Count => _tokens.Length;
 
         /// <summary>
         /// Gets the last (decoded) reference token, or <c>null</c> if this pointer targets the whole document.
         /// </summary>
-        public string LastToken => _tokens.Count == 0 ? null : _tokens[_tokens.Count - 1];
+        public string LastToken => _tokens.Length == 0 ? null : _tokens[_tokens.Length - 1];
+
+        /// <summary>
+        /// Gets the decoded reference tokens. Callers must treat the array as read-only.
+        /// </summary>
+        internal string[] Tokens => _tokens;
 
         /// <summary>
         /// Determines whether this pointer targets a new array element (i.e. its last token is "-").
@@ -89,7 +113,7 @@ namespace Tavis
         /// <returns><c>true</c> if the last token is "-"; <c>false</c> for the root pointer or any other token.</returns>
         public bool IsNewPointer()
         {
-            return _tokens.Count != 0 && _tokens[_tokens.Count - 1] == "-";
+            return _tokens.Length != 0 && _tokens[_tokens.Length - 1] == "-";
         }
 
         /// <summary>
@@ -99,16 +123,32 @@ namespace Tavis
         {
             get
             {
-                if (_tokens.Count == 0) return null;
+                if (_tokens.Length == 0) return null;
 
-                var tokens = new string[_tokens.Count - 1];
-                for (int i = 0; i < _tokens.Count - 1; i++)
-                {
-                    tokens[i] = _tokens[i];
-                }
-
+                var tokens = new string[_tokens.Length - 1];
+                Array.Copy(_tokens, tokens, tokens.Length);
                 return new JsonPointer(tokens);
             }
+        }
+
+        /// <summary>
+        /// Determines whether this pointer is <paramref name="ancestor"/> itself or targets a location nested inside it.
+        /// </summary>
+        /// <param name="ancestor">The pointer to test against.</param>
+        /// <returns><c>true</c> if every token of <paramref name="ancestor"/> is a leading token of this pointer.</returns>
+        public bool IsSelfOrDescendantOf(JsonPointer ancestor)
+        {
+            if (ancestor == null) throw new ArgumentNullException(nameof(ancestor));
+
+            var a = ancestor._tokens;
+            if (a.Length > _tokens.Length) return false;
+
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (!string.Equals(a[i], _tokens[i], StringComparison.Ordinal)) return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -119,10 +159,19 @@ namespace Tavis
         /// <exception cref="ArgumentException">Thrown if the pointer cannot be resolved against <paramref name="sample"/>.</exception>
         public JToken Find(JToken sample)
         {
+            return Find(sample, _tokens.Length);
+        }
+
+        /// <summary>
+        /// Resolves only the first <paramref name="depth"/> tokens of this pointer, so a parent can be located
+        /// without allocating a separate <see cref="ParentPointer"/>.
+        /// </summary>
+        internal JToken Find(JToken sample, int depth)
+        {
             if (sample == null) throw new ArgumentNullException(nameof(sample));
 
             var current = sample;
-            for (int i = 0; i < _tokens.Count; i++)
+            for (int i = 0; i < depth; i++)
             {
                 var token = _tokens[i];
                 var array = current as JArray;
@@ -150,10 +199,10 @@ namespace Tavis
         /// <summary>
         /// Parses an array index, rejecting the signs, whitespace and leading zeroes that RFC 6901 disallows.
         /// </summary>
-        private static bool TryParseIndex(string token, out int index)
+        internal static bool TryParseIndex(string token, out int index)
         {
             index = 0;
-            if (token.Length == 0) return false;
+            if (string.IsNullOrEmpty(token)) return false;
             if (token.Length > 1 && token[0] == '0') return false;
 
             return int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out index);
@@ -164,7 +213,10 @@ namespace Tavis
         /// </summary>
         private ArgumentException Failure(int tokenIndex, string reason)
         {
-            var resolved = new JsonPointer(_tokens.Take(tokenIndex).ToArray());
+            var prefix = new string[tokenIndex];
+            Array.Copy(_tokens, prefix, tokenIndex);
+            var resolved = new JsonPointer(prefix);
+
             return new ArgumentException(
                 "Failed to dereference pointer '" + this + "' at segment " + (tokenIndex + 1) +
                 " ('" + _tokens[tokenIndex] + "'): after '" + resolved + "', " + reason + ".");
@@ -177,15 +229,60 @@ namespace Tavis
         /// <returns>The JSON Pointer string.</returns>
         public override string ToString()
         {
-            if (_tokens.Count == 0) return string.Empty;
+            // Immutable, so the rendering is computed once; a benign race can only compute the same string twice.
+            var text = _text;
+            if (text != null) return text;
 
-            var sb = new StringBuilder();
-            for (int i = 0; i < _tokens.Count; i++)
+            if (_tokens.Length == 0)
             {
-                sb.Append('/').Append(Encode(_tokens[i]));
+                text = string.Empty;
+            }
+            else
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < _tokens.Length; i++)
+                {
+                    sb.Append('/').Append(Encode(_tokens[i]));
+                }
+
+                text = sb.ToString();
             }
 
-            return sb.ToString();
+            _text = text;
+            return text;
+        }
+
+        /// <summary>
+        /// Determines whether this pointer consists of the same reference tokens as <paramref name="other"/>.
+        /// </summary>
+        /// <param name="other">The pointer to compare with.</param>
+        /// <returns><c>true</c> if both pointers target the same location.</returns>
+        public bool Equals(JsonPointer other)
+        {
+            if (ReferenceEquals(this, other)) return true;
+            if (other == null || other._tokens.Length != _tokens.Length) return false;
+
+            for (int i = 0; i < _tokens.Length; i++)
+            {
+                if (!string.Equals(_tokens[i], other._tokens[i], StringComparison.Ordinal)) return false;
+            }
+
+            return true;
+        }
+
+        /// <inheritdoc />
+        public override bool Equals(object obj) => Equals(obj as JsonPointer);
+
+        /// <inheritdoc />
+        public override int GetHashCode()
+        {
+            int hash = 17;
+            for (int i = 0; i < _tokens.Length; i++)
+            {
+                hash = unchecked(hash * 31 + StringComparer.Ordinal.GetHashCode(_tokens[i]));
+            }
+
+            return hash;
         }
     }
 }
